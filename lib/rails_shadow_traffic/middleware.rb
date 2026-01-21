@@ -9,41 +9,54 @@ module RailsShadowTraffic
       @app = app
     end
 
-    def call(env)
-      # Pass the request through to the application first, allowing it to complete
-      # without being delayed by the shadow traffic logic.
-      status, headers, response = @app.call(env)
-
-      # After the main request is handled, decide if we should shadow this request.
-      # This ensures we do not impact the response time for the user.
-      if should_shadow?(env)
-        # For now, we'll just log that we would have shadowed the request.
-        # In a future step, this is where we will build and dispatch the
-        # shadow payload to a background job.
-        log_shadow_decision(env)
+      def call(env)
+        # The decision to shadow is made before the main app call,
+        # but the job is dispatched after, to avoid delaying the response.
+        should_shadow = should_shadow?(env)
+        
+        if should_shadow
+          payload = build_payload_from_env(env)
+        end
+    
+        status, headers, response = @app.call(env)
+    
+        if should_shadow && payload
+          RailsShadowTraffic::Job.perform_later(payload)
+        end
+    
+        [status, headers, response]
       end
-
-      # Return the original application response.
-      [status, headers, response]
-    end
-
-    private
-
-    def should_shadow?(env)
-      # Create a lightweight Rack::Request object to pass to the sampler.
-      # We avoid creating this if the gem is disabled as a micro-optimization.
-      return false unless RailsShadowTraffic.config.enabled
-
-      request = Rack::Request.new(env)
-      Sampler.sample?(request, RailsShadowTraffic.config)
-    end
-
-    def log_shadow_decision(env)
-      return unless defined?(Rails.logger)
-
-      method = env['REQUEST_METHOD']
-      path = env['PATH_INFO']
-      Rails.logger.info "[RailsShadowTraffic] Decision: YES. Would shadow request: #{method} #{path}"
-    end
-  end
+    
+      private
+    
+      def should_shadow?(env)
+        return false unless RailsShadowTraffic.config.enabled
+        # We create the request object once and pass it around if needed.
+        request = Rack::Request.new(env)
+        Sampler.sample?(request, RailsShadowTraffic.config)
+      end
+    
+      # Extracts relevant details from the request environment into a serializable hash.
+      def build_payload_from_env(env)
+        request = Rack::Request.new(env)
+        
+        # Read and rewind the request body so the main application can still read it.
+        body = request.body.read
+        request.body.rewind
+    
+        {
+          method: request.request_method,
+          path: request.path,
+          query_string: request.query_string,
+          headers: extract_headers(env),
+          body: body
+        }
+      end
+    
+      # Extracts HTTP headers from the Rack environment hash.
+      def extract_headers(env)
+        env.select { |k, _v| k.start_with?('HTTP_') }
+           .transform_keys { |k| k.sub(/^HTTP_/, '').split('_').map(&:capitalize).join('-') }
+      end
+      end
 end
