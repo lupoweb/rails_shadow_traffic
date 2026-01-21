@@ -12,18 +12,21 @@ module RailsShadowTraffic
     # In a future step, this job will accept arguments containing the request
     # details (method, path, headers, body) and use an HTTP client to
     # send the request to the shadow target.
-    def perform(*args)
-      # For now, we just log that the job was executed.
-      if defined?(Rails.logger)
-        Rails.logger.info "[RailsShadowTraffic::Job] Executed with args: #{args.inspect}"
-      end
-
-      # TODO:
-      # 1. Instantiate an HTTP client.
-      # 2. Build the shadow request (method, URL, headers, body).
-      # 3. Send the request.
-      # 4. Receive the shadow response.
-      # 5. Optionally perform a diff and report mismatches.
-    end
-  end
+      def perform(payload)
+        if defined?(Rails.logger)
+          Rails.logger.info "[RailsShadowTraffic::Job] Sending shadow request for: #{payload[:method]} #{payload[:path]}"
+        end
+    
+        # Instantiate the client and send the request.
+        # The config is globally accessible via RailsShadowTraffic.config
+        client = Client.new(payload.with_indifferent_access, RailsShadowTraffic.config)
+        response = client.send_request
+    
+        if response && defined?(Rails.logger)
+          Rails.logger.info "[RailsShadowTraffic::Job] Received shadow response: #{response.code} #{response.message}"
+        end
+    
+        # In a future step, we would compare this response with the original
+        # and report any differences.
+      end  end
 end

@@ -70,6 +70,10 @@ module RailsShadowTraffic
     #   @return [Integer] Max number of log messages per second, per log level, to prevent log storms. Default: `5`.
     attr_accessor :log_rate_limit_per_second
 
+    # @!attribute [rw] target_url
+    #   @return [String, nil] The base URL of the shadow environment. Example: `"https://shadow-api.example.com"`.
+    attr_accessor :target_url
+
     # --- Internal State ---
     attr_reader :condition_failure_count, :circuit_last_opened_at
 
@@ -93,6 +97,7 @@ module RailsShadowTraffic
       @condition_timeout = 0.01 # 10ms
       @condition_failure_threshold = 10
       @condition_circuit_cooldown = 60 # 1 minute
+      @target_url = nil
 
       @log_rate_limit_per_second = 5
       @log_timestamps = {} # { warn: [t1, t2], error: [t1] }
@@ -103,6 +108,7 @@ module RailsShadowTraffic
 
     # Validates the configuration, raising an error if any value is invalid.
     def validate!
+      raise ArgumentError, "target_url must be a valid URL string" if @target_url.to_s.empty? || !(@target_url =~ URI::DEFAULT_PARSER.make_regexp)
       raise ArgumentError, "sample_rate must be between 0.0 and 1.0" unless (0.0..1.0).cover?(@sample_rate)
       raise ArgumentError, "sampler must be :random or :stable_hash" unless [:random, :stable_hash].include?(@sampler)
       raise ArgumentError, "only_methods must be an Array" unless @only_methods.is_a?(Array)
