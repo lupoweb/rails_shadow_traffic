@@ -74,6 +74,18 @@ module RailsShadowTraffic
     #   @return [String, nil] The base URL of the shadow environment. Example: `"https://shadow-api.example.com"`.
     attr_accessor :target_url
 
+    # @!attribute [rw] scrub_headers
+    #   @return [Array<String>] A list of header names to be removed from the request before sending it to the shadow target. Case-insensitive. Default: `['Authorization', 'Cookie']`.
+    attr_accessor :scrub_headers
+
+    # @!attribute [rw] scrub_json_fields
+    #   @return [Array<String>] A list of JSON keys to be masked in the request body. Works on nested keys. Default: `['password', 'token', 'credit_card']`.
+    attr_accessor :scrub_json_fields
+    
+    # @!attribute [rw] scrub_mask
+    #   @return [String] The value used to replace sensitive data in JSON bodies. Default: `'[FILTERED]'`.
+    attr_accessor :scrub_mask
+
     # --- Internal State ---
     attr_reader :condition_failure_count, :circuit_last_opened_at
 
@@ -98,6 +110,9 @@ module RailsShadowTraffic
       @condition_failure_threshold = 10
       @condition_circuit_cooldown = 60 # 1 minute
       @target_url = nil
+      @scrub_headers = ['Authorization', 'Cookie']
+      @scrub_json_fields = ['password', 'token', 'credit_card', 'cvv', 'ssn']
+      @scrub_mask = '[FILTERED]'
 
       @log_rate_limit_per_second = 5
       @log_timestamps = {} # { warn: [t1, t2], error: [t1] }
@@ -108,7 +123,7 @@ module RailsShadowTraffic
 
     # Validates the configuration, raising an error if any value is invalid.
     def validate!
-      raise ArgumentError, "target_url must be a valid URL string" if @target_url.to_s.empty? || !(@target_url =~ URI::DEFAULT_PARSER.make_regexp)
+      raise ArgumentError, "target_url must be a valid URL string" if @enabled && (@target_url.to_s.empty? || !(@target_url =~ URI::DEFAULT_PARSER.make_regexp))
       raise ArgumentError, "sample_rate must be between 0.0 and 1.0" unless (0.0..1.0).cover?(@sample_rate)
       raise ArgumentError, "sampler must be :random or :stable_hash" unless [:random, :stable_hash].include?(@sampler)
       raise ArgumentError, "only_methods must be an Array" unless @only_methods.is_a?(Array)
@@ -116,6 +131,8 @@ module RailsShadowTraffic
       raise ArgumentError, "condition must be a Proc" unless @condition.is_a?(Proc)
       raise ArgumentError, "condition_timeout must be a positive number" if @condition_timeout.to_f <= 0
       @condition_timeout = [@condition_timeout.to_f, 0.1].min # Clamp timeout to a max of 100ms
+      raise ArgumentError, "scrub_headers must be an Array" unless @scrub_headers.is_a?(Array)
+      raise ArgumentError, "scrub_json_fields must be an Array" unless @scrub_json_fields.is_a?(Array)
     end
 
     # Finalizes and freezes the configuration to prevent runtime changes.
@@ -123,6 +140,9 @@ module RailsShadowTraffic
       validate!
       @only_methods.map!(&:to_s).map!(&:upcase).freeze
       @only_paths.freeze
+      # Normalize scrub_headers to be case-insensitive
+      @scrub_headers = @scrub_headers.map { |h| h.to_s.downcase }.freeze
+      @scrub_json_fields = @scrub_json_fields.map(&:to_s).freeze
       @finalized = true
       freeze
     end

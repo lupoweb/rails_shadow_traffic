@@ -36,23 +36,27 @@ module RailsShadowTraffic
         Sampler.sample?(request, RailsShadowTraffic.config)
       end
     
-      # Extracts relevant details from the request environment into a serializable hash.
-      def build_payload_from_env(env)
-        request = Rack::Request.new(env)
-        
-        # Read and rewind the request body so the main application can still read it.
-        body = request.body.read
-        request.body.rewind
-    
-        {
-          method: request.request_method,
-          path: request.path,
-          query_string: request.query_string,
-          headers: extract_headers(env),
-          body: body
-        }
-      end
-    
+        # Extracts relevant details from the request environment into a serializable hash.
+        def build_payload_from_env(env)
+          request = Rack::Request.new(env)
+          
+          # Read and rewind the request body so the main application can still read it.
+          body = request.body.read
+          request.body.rewind
+      
+          payload = {
+            method: request.request_method,
+            path: request.path,
+            query_string: request.query_string,
+            headers: extract_headers(env),
+            body: body
+          }
+      
+          # Scrub sensitive data from the payload before sending it to the job.
+          Scrubber.scrub!(payload, RailsShadowTraffic.config)
+      
+          payload
+        end    
       # Extracts HTTP headers from the Rack environment hash.
       def extract_headers(env)
         env.select { |k, _v| k.start_with?('HTTP_') }
