@@ -5,7 +5,7 @@ require 'rails_shadow_traffic/config'
 require 'net/http'
 
 RSpec.describe RailsShadowTraffic::Differ do
-  let(:config) { RailsShadowTraffic::Config.new }
+  let(:config) { RailsShadowTraffic::Config.instance }
   let(:original_response_payload) do
     {
       status: 200,
@@ -22,6 +22,7 @@ RSpec.describe RailsShadowTraffic::Differ do
   end
 
   before do
+    config.reset!
     config.diff_enabled = true
     config.finalize!
   end
@@ -29,7 +30,11 @@ RSpec.describe RailsShadowTraffic::Differ do
   subject { described_class.new(original_response_payload, shadow_response_mock, config).diff }
 
   context "when diffing is disabled" do
-    before { config.diff_enabled = false }
+    before do
+      config.set_defaults
+      config.diff_enabled = false
+      config.finalize!
+    end
     it { is_expected.to be_empty }
   end
 

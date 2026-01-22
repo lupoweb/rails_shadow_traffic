@@ -6,7 +6,7 @@ require 'rack/request'
 require 'stringio'
 
 RSpec.describe RailsShadowTraffic::Sampler do
-  let(:config) { RailsShadowTraffic::Config.new }
+  let(:config) { RailsShadowTraffic::Config.instance }
   let(:env) do
     {
       'REQUEST_METHOD' => 'GET',
@@ -18,7 +18,7 @@ RSpec.describe RailsShadowTraffic::Sampler do
   let(:request) { Rack::Request.new(env) }
 
   before do
-    # Finalize config to simulate realistic usage
+    config.reset!
     config.enabled = true
     config.finalize!
   end

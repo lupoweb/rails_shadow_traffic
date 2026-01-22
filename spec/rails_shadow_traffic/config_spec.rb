@@ -3,8 +3,12 @@
 require 'rails_shadow_traffic/config'
 
 RSpec.describe RailsShadowTraffic::Config do
-  # Use a fresh instance for each test
-  let(:config) { described_class.new }
+  # The Config class is a singleton. We get the instance and reset it before each test.
+  let(:config) { described_class.instance }
+
+  before do
+    config.reset!
+  end
 
   describe "defaults" do
     it "has correct default values" do

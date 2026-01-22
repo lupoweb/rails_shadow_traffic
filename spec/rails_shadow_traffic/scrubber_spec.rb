@@ -4,29 +4,30 @@ require 'rails_shadow_traffic/scrubber'
 require 'rails_shadow_traffic/config'
 
 RSpec.describe RailsShadowTraffic::Scrubber do
-  let(:config) { RailsShadowTraffic::Config.new }
+  let(:config) { RailsShadowTraffic::Config.instance }
 
-  describe ".scrub!" do
-    let(:payload) do
-      {
-        headers: {
-          'Content-Type' => 'application/json',
-          'Authorization' => 'Bearer some-token',
-          'Cookie' => 'user_session_id=12345',
-          'X-Custom-Header' => 'some-value'
-        },
-        body: ''
-      }
-    end
+  let(:payload) do
+    {
+      headers: {
+        'Content-Type' => 'application/json',
+        'Authorization' => 'Bearer some-token',
+        'Cookie' => 'user_session_id=12345',
+        'X-Custom-Header' => 'some-value'
+      },
+      body: ''
+    }
+  end
 
-    before do
-      # Set default scrub rules
-      config.scrub_headers = ['Authorization', 'Cookie']
-      config.scrub_json_fields = ['password', 'token']
-      config.scrub_mask = '[FILTERED]'
-      config.finalize! # Normalize and freeze rules
-    end
+  before do
+    config.reset!
+    # Set default scrub rules
+    config.scrub_headers = ['Authorization', 'Cookie']
+    config.scrub_json_fields = ['password', 'token']
+    config.scrub_mask = '[FILTERED]'
+    config.finalize! # Normalize and freeze rules
+  end
 
+  describe ".scrub!" do # <-- ADDED THIS BLOCK
     context "with header scrubbing" do
       it "removes sensitive headers" do
         described_class.scrub!(payload, config)
@@ -95,4 +96,3 @@ RSpec.describe RailsShadowTraffic::Scrubber do
       end
     end
   end
-end

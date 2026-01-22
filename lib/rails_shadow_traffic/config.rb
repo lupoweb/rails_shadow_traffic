@@ -100,36 +100,39 @@ module RailsShadowTraffic
 
     def initialize
       super
-      set_defaults
+      reset! # Use reset! to initialize
       @finalized = false
     end
 
-    # Sets the configuration values to their defaults.
-    def set_defaults
-      @enabled = false
-      @sample_rate = 0.0
-      @sampler = :random
-      @sampling_key = nil
-      @identifier_extractor = nil
-      @hash_scope = nil
-      @only_methods = ['GET']
-      @only_paths = []
-      @condition = ->(_req) { true }
-      @condition_timeout = 0.01 # 10ms
-      @condition_failure_threshold = 10
-      @condition_circuit_cooldown = 60 # 1 minute
-      @target_url = nil
-      @scrub_headers = ['Authorization', 'Cookie']
-      @scrub_json_fields = ['password', 'token', 'credit_card', 'cvv', 'ssn']
-      @scrub_mask = '[FILTERED]'
-      @diff_enabled = true
-      @diff_ignore_json_paths = []
+    # Resets the configuration values to their defaults, ensuring a clean state.
+    def reset!
+      synchronize do
+        @enabled = false
+        @sample_rate = 0.0
+        @sampler = :random
+        @sampling_key = nil
+        @identifier_extractor = nil
+        @hash_scope = nil
+        @only_methods = ['GET']
+        @only_paths = []
+        @condition = ->(_req) { true }
+        @condition_timeout = 0.01 # 10ms
+        @condition_failure_threshold = 10
+        @condition_circuit_cooldown = 60 # 1 minute
+        @target_url = nil
+        @scrub_headers = ['Authorization', 'Cookie']
+        @scrub_json_fields = ['password', 'token', 'credit_card', 'cvv', 'ssn']
+        @scrub_mask = '[FILTERED]'
+        @diff_enabled = true
+        @diff_ignore_json_paths = []
 
-      @log_rate_limit_per_second = 5
-      @log_timestamps = {} # { warn: [t1, t2], error: [t1] }
+        @log_rate_limit_per_second = 5
+        @log_timestamps = {} # { warn: [t1, t2], error: [t1] }
 
-      @condition_failure_count = 0
-      @circuit_last_opened_at = nil
+        @condition_failure_count = 0
+        @circuit_last_opened_at = nil
+        @finalized = false # Ensure it's not finalized on reset
+      end
     end
 
     # Validates the configuration, raising an error if any value is invalid.
@@ -147,17 +150,33 @@ module RailsShadowTraffic
       raise ArgumentError, "diff_ignore_json_paths must be an Array" unless @diff_ignore_json_paths.is_a?(Array)
     end
 
-    # Finalizes and freezes the configuration to prevent runtime changes.
+    # Finalizes and "prepares" the configuration by normalizing and freezing its values.
+    # It does NOT freeze the Config instance itself, but rather flags it as finalized.
+    # The actual freezing of the *values* happens here, and the instance is marked.
     def finalize!
-      validate!
-      @only_methods.map!(&:to_s).map!(&:upcase).freeze
-      @only_paths.freeze
-      # Normalize scrub_headers to be case-insensitive
-      @scrub_headers = @scrub_headers.map { |h| h.to_s.downcase }.freeze
-      @scrub_json_fields = @scrub_json_fields.map(&:to_s).freeze
-      @diff_ignore_json_paths = @diff_ignore_json_paths.map(&:to_s).freeze
-      @finalized = true
-      freeze
+      synchronize do
+        validate!
+        @only_methods.map!(&:to_s).map!(&:upcase).freeze
+        @only_paths.freeze
+        @scrub_headers = @scrub_headers.map { |h| h.to_s.downcase }.freeze
+        @scrub_json_fields = @scrub_json_fields.map(&:to_s).freeze
+        @diff_ignore_json_paths = @diff_ignore_json_paths.map(&:to_s).freeze
+        @finalized = true
+      end
+    end
+
+    # Returns true if the configuration has been finalized.
+    def finalized?
+      @finalized
+    end
+
+    # Returns a frozen copy of the configuration attributes for use in runtime logic.
+    # This prevents accidental modification of the active configuration.
+    def frozen_copy
+      raise "Configuration must be finalized before accessing a frozen copy." unless finalized?
+      # Create a new object to hold the frozen configuration state
+      # This is a shallow copy, but attributes like arrays/hashes are already frozen by finalize!
+      Marshal.load(Marshal.dump(self)).freeze
     end
 
     # --- Circuit Breaker Logic ---

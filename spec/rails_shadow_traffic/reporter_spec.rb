@@ -6,7 +6,7 @@ require 'active_support/notifications'
 require 'net/http'
 
 RSpec.describe RailsShadowTraffic::Reporter do
-  let(:config) { RailsShadowTraffic::Config.new }
+  let(:config) { RailsShadowTraffic::Config.instance }
   let(:request_payload) { { method: 'GET', path: '/test', query_string: '', headers: {}, body: '' } }
   let(:original_response_payload) { { status: 200, headers: {}, body: 'original' } }
   let(:shadow_response_mock) do
@@ -14,10 +14,11 @@ RSpec.describe RailsShadowTraffic::Reporter do
   end
 
   before do
+    config.reset!
     config.log_rate_limit_per_second = 100 # Ensure logs are always allowed for tests
     config.finalize!
     # Clear any previous notifications for a clean test environment
-    ActiveSupport::Notifications.unsubscribe(:all)
+    ActiveSupport::Notifications.unsubscribe(:all) if defined?(ActiveSupport::Notifications)
   end
 
   describe ".report" do
