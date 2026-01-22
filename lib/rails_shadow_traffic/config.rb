@@ -86,6 +86,15 @@ module RailsShadowTraffic
     #   @return [String] The value used to replace sensitive data in JSON bodies. Default: `'[FILTERED]'`.
     attr_accessor :scrub_mask
 
+    # @!attribute [rw] diff_enabled
+    #   @return [Boolean] Enables or disables the comparison between original and shadow responses. Default: `true`.
+    attr_accessor :diff_enabled
+
+    # @!attribute [rw] diff_ignore_json_paths
+    #   @return [Array<String>] A list of JSON paths to ignore during response comparison.
+    #     Uses a simple dot notation, e.g., `['meta.timestamp', 'user.last_login_at']`. Default: `[]`.
+    attr_accessor :diff_ignore_json_paths
+
     # --- Internal State ---
     attr_reader :condition_failure_count, :circuit_last_opened_at
 
@@ -113,6 +122,8 @@ module RailsShadowTraffic
       @scrub_headers = ['Authorization', 'Cookie']
       @scrub_json_fields = ['password', 'token', 'credit_card', 'cvv', 'ssn']
       @scrub_mask = '[FILTERED]'
+      @diff_enabled = true
+      @diff_ignore_json_paths = []
 
       @log_rate_limit_per_second = 5
       @log_timestamps = {} # { warn: [t1, t2], error: [t1] }
@@ -133,6 +144,7 @@ module RailsShadowTraffic
       @condition_timeout = [@condition_timeout.to_f, 0.1].min # Clamp timeout to a max of 100ms
       raise ArgumentError, "scrub_headers must be an Array" unless @scrub_headers.is_a?(Array)
       raise ArgumentError, "scrub_json_fields must be an Array" unless @scrub_json_fields.is_a?(Array)
+      raise ArgumentError, "diff_ignore_json_paths must be an Array" unless @diff_ignore_json_paths.is_a?(Array)
     end
 
     # Finalizes and freezes the configuration to prevent runtime changes.
@@ -143,6 +155,7 @@ module RailsShadowTraffic
       # Normalize scrub_headers to be case-insensitive
       @scrub_headers = @scrub_headers.map { |h| h.to_s.downcase }.freeze
       @scrub_json_fields = @scrub_json_fields.map(&:to_s).freeze
+      @diff_ignore_json_paths = @diff_ignore_json_paths.map(&:to_s).freeze
       @finalized = true
       freeze
     end
